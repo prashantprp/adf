@@ -1,0 +1,78 @@
+using System;
+using System.IO;
+using System.Linq;
+using Microsoft.Rest;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Management.ResourceManager;
+using Microsoft.Azure.Management.DataFactory;
+using Microsoft.Azure.Management.DataFactory.Models;
+using Microsoft.IdentityModel.Clients.ActiveDirectory;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+
+namespace FunctionAdfSQL
+{
+    public static class FunctionAdfSQL
+    {
+        [FunctionName("FunctionAdfSQL")]
+        public static async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
+            ILogger log)
+        {
+            log.LogInformation("C# HTTP trigger function processed a request.");
+
+            string name = req.Query["name"];
+
+            // Set variables
+            string tenantID = "271df5c2-953a-497b-93ad-7adf7a4b3cd7";
+            string applicationId = "50132670-e3be-4451-9955-8ec56cba8c6a";
+            string authenticationKey = "XXXXXXX";
+            string subscriptionId = "5999a354-0f83-45b3-97c5-9a631dc67e4a";
+            string resourceGroup = "ENBZE2-ELP-DE-RGP-CORTRD";
+            string region = "East US 2";
+            string dataFactoryName = "twbenchadfdemo";
+            string storageAccount = "<your storage account name to copy data>";
+            string storageKey = "<your storage account key>";
+            // specify the container and input folder from which all files 
+            // need to be copied to the output folder. 
+            string inputBlobPath =
+                "<path to existing blob(s) to copy data from, e.g. containername/inputdir>";
+            //specify the contains and output folder where the files are copied
+            string outputBlobPath =
+                "<the blob path to copy data to, e.g. containername/outputdir>";
+
+            // name of the Azure Storage linked service, blob dataset, and the pipeline
+            string storageLinkedServiceName = "AzureStorageLinkedService";
+            string blobDatasetName = "BlobDataset";
+            string pipelineName = "ADLS_SQL_DEMO";
+            // Set variables End.
+
+            // Authenticate and create a data factory management client
+            var context = new AuthenticationContext("https://login.windows.net/" + tenantID);
+            ClientCredential cc = new ClientCredential(applicationId, authenticationKey);
+            AuthenticationResult result = context.AcquireTokenAsync(
+                "https://management.azure.com/", cc).Result;
+            ServiceClientCredentials cred = new TokenCredentials(result.AccessToken);
+            var client = new DataFactoryManagementClient(cred)
+            {
+                SubscriptionId = subscriptionId
+            };
+
+            CreateRunResponse runResponse = client.Pipelines.CreateRunWithHttpMessagesAsync(
+                                                        resourceGroup, dataFactoryName, pipelineName).Result.Body;
+
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            dynamic data = JsonConvert.DeserializeObject(requestBody);
+            name = name ?? data?.name;
+
+            return name != null
+                ? (ActionResult)new OkObjectResult($"Hello, {name}")
+                : new BadRequestObjectResult("Please pass a name on the query string or in the request body");
+        }
+    }
+}
